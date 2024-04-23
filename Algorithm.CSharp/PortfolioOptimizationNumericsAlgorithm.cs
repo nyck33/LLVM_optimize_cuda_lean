@@ -53,6 +53,29 @@ namespace QuantConnect.Algorithm.CSharp
             }
         }
 
+        //todo: need the .so file
+        [DllImport("cuda_lib/libcovariance.so", CallingConvention = CallingConvention.Cdecl)]
+        private static extern void computeCovarianceMatrix(double[] s, double[] r, double[] result, int sRows, int sCols, int rCols, IntPtr stream);
+
+        public Matrix<double> ComputeCovarianceMatrix(Matrix<double> S, Matrix<double> R)
+        {
+            double[] sArray = S.ToRowMajorArray();
+            double[] rArray = R.ToRowMajorArray();
+            int sRows = S.RowCount;
+            int sCols = S.ColumnCount;
+            int rRows = R.RowCount;
+            int rCols = R.ColumnCount;
+            double[] resultArray = new double[sRows * rCols]; // The result size based on matrix multiplication rules
+
+            IntPtr stream = IntPtr.Zero;
+            computeCovarianceMatrix(sArray, rArray, resultArray, sRows, sCols, rCols, stream);
+
+            // Convert the resultArray back to a Matrix<double> for Sigma
+            Sigma = Matrix<double>.Build.DenseOfRowMajor(sRows, rCols, resultArray);
+
+            return Sigma;
+        }
+
 
         /// <summary>
         /// Initialise the data and resolution required, as well as the cash and start-end dates for your algorithm. All algorithms must initialized.
@@ -85,7 +108,10 @@ namespace QuantConnect.Algorithm.CSharp
             var R = MathNet.Numerics.Statistics.Correlation.PearsonMatrix(allHistoryBars);
 
             // Computes Covariance Matrix (using Math.NET Numerics Linear Algebra)
-            Sigma = S * R * S;
+            //todo: convert to cpp cuda
+            Sigma = ComputeCovarianceMatrix(S, R);
+
+            //Sigma = S * R * S;
 
             ComputeLagrangeMultiplier();
             ComputeWeights();
@@ -114,6 +140,7 @@ namespace QuantConnect.Algorithm.CSharp
         /// <summary>
         /// Computes Lagrange Multiplier
         /// </summary>
+        //todo: convert to cpp cuda
         private void ComputeLagrangeMultiplier()
         {
             var denominatorMatrix = DiscountMeanVector * Sigma.Inverse() * DiscountMeanVector.ToColumnMatrix();
@@ -124,6 +151,7 @@ namespace QuantConnect.Algorithm.CSharp
         /// <summary>
         /// Computes weight for each risky asset
         /// </summary>
+        //todo: convert to cpp cuda
         private void ComputeWeights()
         {
             var weights = _lagrangeMultiplier * Sigma.Inverse() * DiscountMeanVector.ToColumnMatrix();
@@ -137,6 +165,7 @@ namespace QuantConnect.Algorithm.CSharp
         /// <summary>
         /// Computes Portfolio Risk
         /// </summary>
+        //todo: convert to cpp cuda
         private void ComputePortfolioRisk()
         {
             var weights = Vector<double>.Build.DenseOfArray(SymbolDataList.Select(x => (double)x.Return).ToArray());
