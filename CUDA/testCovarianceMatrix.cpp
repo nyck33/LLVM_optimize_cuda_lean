@@ -1,5 +1,5 @@
 //nvcc -o testCovarianceMatrix testCovarianceMatrix.cpp cublasComputePortfolioRisk.cu -lcublas
-
+//tests the cublas version of the covariance matrix
 #include <iostream>
 #include <chrono>
 #include <cstdlib>

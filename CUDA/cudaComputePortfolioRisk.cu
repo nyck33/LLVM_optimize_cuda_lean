@@ -1,58 +1,54 @@
-/*write cuda implementation of the following function
-extern "C"
-__global__ void cudaComputeCovarianceMatrix(double* s, double* r, double* result, int sRows, int sCols, int rCols) {
-    // Use cuBLAS to perform the multiplication S * R * S
-    // This is a simplified placeholder. Actual implementation will involve cuBLAS calls and handling the result matrix.
-}
-Sigma = S * R * S
-*/
-#include <cublas_v2.h> // Include the cuBLAS library for GPU-accelerated linear algebra operations
+#include <cuda.h>
 
-extern "C"
-__global__ void cudaComputeCovarianceMatrix(double* s, double* r, double* result, int sRows, int sCols, int rCols) {
-    // Calculate the row index of the element to be processed by this thread
+#include <cuda_runtime.h>
+
+// CUDA kernel to perform the matrix multiplication A * B
+__global__ void matrixMultiply(double* A, double* B, double* C, int ARows, int ACols, int BCols) {
     int row = blockIdx.y * blockDim.y + threadIdx.y;
-    // Calculate the column index of the element to be processed by this thread
     int col = blockIdx.x * blockDim.x + threadIdx.x;
 
-    // Ensure the thread is within the bounds of the result matrix
-    if(row < sRows && col < rCols) {
-        double sum = 0; // Initialize the sum for this element
-        // Iterate over the shared dimension to compute the dot product
-        for(int k = 0; k < sCols; ++k) {
-            sum += s[row * sCols + k] * r[k * rCols + col]; // Accumulate the product of corresponding elements
+    if (row < ARows && col < BCols) {
+        double sum = 0.0;
+        for (int k = 0; k < ACols; ++k) {
+            sum += A[row * ACols + k] * B[k * BCols + col];
         }
-        result[row * rCols + col] = sum; // Store the computed sum in the result matrix
+        C[row * BCols + col] = sum;
     }
 }
 
-void computeCovarianceMatrix(double* s, double* r, double* result, int sRows, int sCols, int rCols, cudaStream_t stream = 0) {
-    double* d_s; // Pointer for the device memory of matrix S
-    double* d_r; // Pointer for the device memory of matrix R
-    double* d_result; // Pointer for the device memory of the result matrix
+// Host function to initialize memory, call the kernels, and clean up
+extern "C" void computeCovarianceMatrix(double* S, double* R, double* Sigma, int sRows, int sCols) {
+    double *d_S, *d_R, *d_T, *d_Sigma;
 
-    // Allocate device memory for matrices S, R, and the result
-    cudaMalloc(&d_s, sRows * sCols * sizeof(double));
-    cudaMalloc(&d_r, sCols * rCols * sizeof(double));
-    cudaMalloc(&d_result, sRows * rCols * sizeof(double));
+    // Allocate Unified Memory – accessible from CPU or GPU
+    cudaMallocManaged(&d_S, sRows * sCols * sizeof(double));
+    cudaMallocManaged(&d_R, sCols * sCols * sizeof(double));
+    cudaMallocManaged(&d_T, sRows * sCols * sizeof(double)); // Intermediate result
+    cudaMallocManaged(&d_Sigma, sRows * sRows * sizeof(double));
 
-    // Copy matrices S and R from host to device memory
-    cudaMemcpy(d_s, s, sRows * sCols * sizeof(double), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_r, r, sCols * rCols * sizeof(double), cudaMemcpyHostToDevice);
+    // Copy data into managed memory
+    cudaMemcpy(d_S, S, sRows * sCols * sizeof(double), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_R, R, sCols * sCols * sizeof(double), cudaMemcpyHostToDevice);
 
-    // Define the block size and grid size for the kernel launch
-    dim3 threadsPerBlock(16, 16); // 16x16 threads per block
-    dim3 blocksPerGrid((rCols + threadsPerBlock.x - 1) / threadsPerBlock.x, (sRows + threadsPerBlock.y - 1) / threadsPerBlock.y); // Calculate the number of blocks needed
+    dim3 threadsPerBlock(16, 16);
+    dim3 blocksPerGrid1((sCols + 15) / 16, (sRows + 15) / 16);
+    dim3 blocksPerGrid2((sRows + 15) / 16, (sRows + 15) / 16);
 
-    // Launch the CUDA kernel to compute the covariance matrix
-    cudaComputeCovarianceMatrix<<<blocksPerGrid, threadsPerBlock, 0, stream>>>(d_s, d_r, d_result, sRows, sCols, rCols);
+    // Perform S * R = T
+    matrixMultiply<<<blocksPerGrid1, threadsPerBlock>>>(d_S, d_R, d_T, sRows, sCols, sCols);
 
-    // Copy the result matrix from device to host memory
-    cudaMemcpy(result, d_result, sRows * rCols * sizeof(double), cudaMemcpyDeviceToHost);
+    // Perform T * S^T = Sigma (assuming S is square and sCols == sRows)
+    matrixMultiply<<<blocksPerGrid2, threadsPerBlock>>>(d_T, d_S, d_Sigma, sRows, sCols, sRows);
 
-    // Free the device memory allocated for matrices S, R, and the result
-    cudaFree(d_s);
-    cudaFree(d_r);
-    cudaFree(d_result);
+    // Wait for GPU to finish before accessing on host
+    cudaDeviceSynchronize();
+
+    // Copy the result matrix back to the host memory
+    cudaMemcpy(Sigma, d_Sigma, sRows * sRows * sizeof(double), cudaMemcpyDeviceToHost);
+
+    // Free the device memory
+    cudaFree(d_S);
+    cudaFree(d_R);
+    cudaFree(d_T);
+    cudaFree(d_Sigma);
 }
-
