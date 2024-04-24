@@ -1,3 +1,5 @@
+### CUDA and LLVM folders contain code for LLVM optmization of Sigma calculation
+
 ![alt tag](https://cdn.quantconnect.com/web/i/20180601-1615-lean-logo-small.png)
 =========
 
