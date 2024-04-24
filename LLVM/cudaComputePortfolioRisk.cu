@@ -1,4 +1,16 @@
 /*
+cgeist cudaComputePortfolioRisk.cu --raise-scf-to-affine -function=* -S --resource-dir=$LLVM_BUILD_DIR/lib/clang/18 --cuda-gpu-arch=sm_75
+*/
+
+//set env var
+//export LLVM_BUILD_DIR=/mnt/d/LLVM/NewPolygeistDir/llvm-project/build
+
+/* output LLVM
+ clang++ -O3 --cuda-gpu-arch=sm_75 --cuda-path=/usr/local/cuda -S -emit-llvm -x cuda --cuda-device-only cudaComputePortfolioRisk.cu -o cudaComputePortfolioRisk.ll
+clang++: warning: CUDA version 12.1 is only partially supported [-Wunknown-cuda-version]
+*/
+
+/*
 nyck33@lenovo-gtx1650:/mnt/d/LLVM/Lean/CUDA$ nvcc -o testNoCublasCovarMatrix noCublasDirver.cpp cudaComputePortfolioRisk.cu -lcudart
 nyck33@lenovo-gtx1650:/mnt/d/LLVM/Lean/CUDA$ ./testNoCublasCovarMatrix      
 GPU computation time: 1.01582 seconds.
